@@ -69,6 +69,37 @@ class BaiduSearcher:
     def __init__(self):
         self.rate_limiter = RateLimiter()
 
+    async def process_result(self, result, fetcher):
+        """
+        处理单个结果，生成 content 并返回 SearchResult 对象。
+        """
+        content = ""
+        abstract = result.get("abstract", "")
+        labels = result.get("labels", [])
+        url = result["url"]
+
+        # 添加摘要部分
+        if len(abstract) > 0:
+            content += f"# Abstract\n{abstract}\n"
+        
+        # 添加标签部分
+        if len(labels) > 0:
+            content += f"# Labels\n{','.join(labels)}\n"
+
+        try:
+            text, url = await fetcher.fetch_and_parse(url)
+            if len(text) > 0:
+                content += f"# Content\n{text}"
+        except Exception as e:
+            pass
+
+        return SearchResult(
+            title=result.get("title", ""),
+            link=url,
+            snippet=content,
+            position=None
+        )
+    
     def format_results_for_llm(self, results: List[SearchResult]) -> str:
         """Format results in a natural language style that's easier for LLMs to process"""
         if not results:
@@ -412,7 +443,12 @@ class BaiduSearcher:
                 search_results.append(result)
 
         else:
-            search_results = results
+            for result in results:
+                search_results.append(SearchResult(
+                title=result.get("title", ""),
+                link=result.get("url", ""),
+                snippet=result.get("abstract", ""),
+            ))
         await ctx.info(f"Successfully found {len(search_results)} results")
         return search_results
 
