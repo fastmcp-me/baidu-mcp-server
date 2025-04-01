@@ -48,7 +48,7 @@ Add the following configuration:
 ```json
 {
     "mcpServers": {
-        "ddg-search": {
+        "baidu-search": {
             "command": "uvx",
             "args": ["baidu-mcp-server"]
         }

@@ -1,6 +1,6 @@
 [project]
 name = "baidu-mcp-server"
-version = "0.1.3"
+version = "0.1.4"
 description = "MCP Server for searching via Baidu"
 readme = "README.md"
 authors = [{ name = "Evilran" }]

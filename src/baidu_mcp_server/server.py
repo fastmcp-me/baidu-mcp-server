@@ -86,7 +86,7 @@ class BaiduSearcher:
         return "\n".join(output)
     
     async def search(
-        self, query: str, ctx: Context, max_results: int = 6, max_retries: int = 5,
+        self, query: str, ctx: Context, max_results: int = 6, deep_mode: bool = False, max_retries: int = 5,
     ) -> List[SearchResult]:
        # Apply rate limiting
         await self.rate_limiter.acquire()
@@ -398,18 +398,21 @@ class BaiduSearcher:
             results.extend(res_note_normal)
             results.extend(res_video_normal)
         
-        tasks = [self.process_result(result, fetcher) for result in results]
+        if deep_mode:
+            tasks = [self.process_result(result, fetcher) for result in results]
 
-        search_tasks = await asyncio.gather(*tasks, return_exceptions=True)
+            search_tasks = await asyncio.gather(*tasks, return_exceptions=True)
 
-        for i, result in enumerate(search_tasks):
-            if isinstance(result, Exception):
-                await ctx.error("Failed to processing result")
-                continue
-            
-            result.position = len(search_results) + 1
-            search_results.append(result)
+            for i, result in enumerate(search_tasks):
+                if isinstance(result, Exception):
+                    await ctx.error("Failed to processing result")
+                    continue
+                
+                result.position = len(search_results) + 1
+                search_results.append(result)
 
+        else:
+            search_results = results
         await ctx.info(f"Successfully found {len(search_results)} results")
         return search_results
 
@@ -525,17 +528,18 @@ fetcher = WebContentFetcher()
 
 
 @mcp.tool()
-async def search(query: str, ctx: Context, max_results: int = 6) -> str:
+async def search(query: str, ctx: Context, max_results: int = 6, deep_mode: bool = False) -> str:
     """
     Search Baidu and return formatted results.
 
     Args:
         query: The search query string
         max_results: Maximum number of results to return (default: 6)
+        deep_mode: Deep search the web content (default: False)
         ctx: MCP context for logging
     """
     try:
-        results = await searcher.search(query, ctx, max_results)
+        results = await searcher.search(query, ctx, max_results, deep_mode)
         return searcher.format_results_for_llm(results)
     except Exception as e:
         traceback.print_exc(file=sys.stderr)
