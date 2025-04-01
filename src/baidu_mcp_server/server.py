@@ -448,10 +448,10 @@ class BaiduSearcher:
                 title=result.get("title", ""),
                 link=result.get("url", ""),
                 snippet=result.get("abstract", ""),
+                position=len(search_results) + 1
             ))
         await ctx.info(f"Successfully found {len(search_results)} results")
         return search_results
-
 
 class WebContentFetcher:
     def __init__(self):
