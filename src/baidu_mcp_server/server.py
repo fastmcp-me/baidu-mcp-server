@@ -11,6 +11,10 @@ from datetime import datetime, timedelta
 import re
 import readabilipy.simple_json
 import markdownify
+import logging
+
+
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 @dataclass
 class SearchResult:
@@ -80,9 +84,9 @@ class BaiduSearcher:
             output.append("")  # Empty line between results
 
         return "\n".join(output)
-
+    
     async def search(
-        self, query: str, ctx: Context, max_results: int = 10, max_retries: int =5,
+        self, query: str, ctx: Context, max_results: int = 6, max_retries: int = 5,
     ) -> List[SearchResult]:
        # Apply rate limiting
         await self.rate_limiter.acquire()
@@ -394,33 +398,19 @@ class BaiduSearcher:
             results.extend(res_note_normal)
             results.extend(res_video_normal)
         
-        for result in results:
-            content = ""
-            abstract = result.get("abstract", "")
-            labels = result.get("labels", [])
+        tasks = [self.process_result(result, fetcher) for result in results]
 
-            if len(abstract) > 0:
-                content += f"# Abstract\n{abstract}\n"
+        search_tasks = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for i, result in enumerate(search_tasks):
+            if isinstance(result, Exception):
+                await ctx.error("Failed to processing result")
+                continue
             
-            if len(labels) > 0:
-                content += f"# Labels\n{",".join(labels)}\n"
-        
-            try:
-                text, url = await fetcher.fetch_and_parse(result["url"])
-                if len(text) > 0:
-                    content += f"# Content\n{text}"
-            except:
-                pass
-            search_results.append(
-                SearchResult(
-                    title=title,
-                    link=result["url"],
-                    snippet=content,
-                    position=len(search_results) + 1,
-                )
-            )
+            result.position = len(search_results) + 1
+            search_results.append(result)
 
-        await ctx.info(f"Successfully found {len(results)} results")
+        await ctx.info(f"Successfully found {len(search_results)} results")
         return search_results
 
 
@@ -458,16 +448,15 @@ class WebContentFetcher:
             text = " ".join(chunk for chunk in chunks if chunk)
 
             # Remove extra whitespace
-            text = re.sub(r"\s+", " ", text).strip()
+            content= re.sub(r"\s+", " ", text).strip()
+        else:
+            content = markdownify.markdownify(
+                ret["content"],
+                heading_style=markdownify.ATX,
+            )
 
-            # Truncate if too long
-            if len(text) > 1024:
-                text = text[:1024] + "... [content truncated]"
-            return text
-        content = markdownify.markdownify(
-            ret["content"],
-            heading_style=markdownify.ATX,
-        )
+        if len(content) > 150:
+            content = content[:150] + "..."
         return content
 
     async def fetch_and_parse(self, url: str, max_redirects=5) -> tuple[str, str]:
@@ -536,13 +525,13 @@ fetcher = WebContentFetcher()
 
 
 @mcp.tool()
-async def search(query: str, ctx: Context, max_results: int = 10) -> str:
+async def search(query: str, ctx: Context, max_results: int = 6) -> str:
     """
     Search Baidu and return formatted results.
 
     Args:
         query: The search query string
-        max_results: Maximum number of results to return (default: 10)
+        max_results: Maximum number of results to return (default: 6)
         ctx: MCP context for logging
     """
     try:
